@@ -33,7 +33,7 @@ def get_weather(city: str, tool_context: ToolContext) -> dict:
               If 'success', includes a 'report' key with weather details.
               If 'error', includes an 'error_message' key.
     """
-    print(f"--- Tool: get_weather called for city: {city} ---")  # Log tool execution
+    rprint(f"[magenta]--- Tool: get_weather called for city: {city} ---")  # Log tool execution
     city_normalized = city.lower().replace(" ", "")  # Basic normalization
 
     # Mock weather data
@@ -129,6 +129,52 @@ def block_keyword_guardrail(
         rprint(f"[red]--- Callback: Keyword not found. Allowing LLM call for {agent_name}. ---")
         return None # Returning None signals ADK to continue normally
 
+from google.adk.tools.base_tool import BaseTool
+from google.adk.tools.tool_context import ToolContext
+from typing import Optional, Dict, Any # For type hints
+
+def block_paris_tool_guardrail(
+    tool: BaseTool, args: Dict[str, Any], tool_context: ToolContext
+) -> Optional[Dict]:
+    """
+    Checks if 'get_weather_stateful' is called for 'Paris'.
+    If so, blocks the tool execution and returns a specific error dictionary.
+    Otherwise, allows the tool call to proceed by returning None.
+    """
+    tool_name = tool.name
+    agent_name = tool_context.agent_name # Agent attempting the tool call
+    rprint(f"[red]--- Callback: block_paris_tool_guardrail running for tool '{tool_name}' in agent '{agent_name}' ---")
+    rprint(f"[red]--- Callback: Inspecting args: {args} ---")
+
+    # --- Guardrail Logic ---
+    target_tool_name = "get_weather_stateful" # Match the function name used by FunctionTool
+    blocked_city = "paris"
+
+    # Check if it's the correct tool and the city argument matches the blocked city
+    if tool_name == target_tool_name:
+        city_argument = args.get("city", "") # Safely get the 'city' argument
+        if city_argument and city_argument.lower() == blocked_city:
+            rprint(f"[red]--- Callback: Detected blocked city '{city_argument}'. Blocking tool execution! ---")
+            # Optionally update state
+            tool_context.state["guardrail_tool_block_triggered"] = True
+            rprint("[red]--- Callback: Set state 'guardrail_tool_block_triggered': True ---")
+
+            # Return a dictionary matching the tool's expected output format for errors
+            # This dictionary becomes the tool's result, skipping the actual tool run.
+            return {
+                "status": "error",
+                "error_message": f"Policy restriction: Weather checks for '{city_argument.capitalize()}' are currently disabled by a tool guardrail."
+            }
+        else:
+             rprint(f"[red]--- Callback: City '{city_argument}' is allowed for tool '{tool_name}'. ---")
+    else:
+        rprint(f"[red]--- Callback: Tool '{tool_name}' is not the target tool. Allowing. ---")
+
+
+    # If the checks above didn't return a dictionary, allow the tool to execute
+    rprint(f"[red]--- Callback: Allowing tool '{tool_name}' to proceed. ---")
+    return None # Returning None allows the actual tool function to run
+
 
 weather_agent = Agent(
     name="weather_agent_v1",
@@ -136,7 +182,8 @@ weather_agent = Agent(
     description="Provides weather information for specific cities.",
     instruction="You are an extremely rude and sarcastic weather assistant /no_think",
     tools=[get_weather],  # Pass the function directly
-    before_model_callback=block_keyword_guardrail # <<< Assign the guardrail callback
+    before_model_callback=block_keyword_guardrail,  # <<< Assign the guardrail callback
+    before_tool_callback=block_paris_tool_guardrail
 )
 
 print(f"Agent '{weather_agent.name}' created using model '{model}'.")
@@ -209,58 +256,12 @@ async def call_agent_async(query: str, runner: Runner, user_id, session_id):
             break  # Stop processing events once the final response is found
         else:
             # Intermediate responses can be printed or logged if needed
-            print(
-                f"  [Intermediate] {event.content.parts[0].text if event.content else 'No content'}"
+            rprint(
+                f"[yellow]--- Intermediate {event.content.parts[0].text if event.content else 'No content'}"
             )
 
     rprint(f"[green]>>>\nAgent Response: {final_response_text}")
     line()
-
-from google.adk.tools.base_tool import BaseTool
-from google.adk.tools.tool_context import ToolContext
-from typing import Optional, Dict, Any # For type hints
-
-def block_paris_tool_guardrail(
-    tool: BaseTool, args: Dict[str, Any], tool_context: ToolContext
-) -> Optional[Dict]:
-    """
-    Checks if 'get_weather_stateful' is called for 'Paris'.
-    If so, blocks the tool execution and returns a specific error dictionary.
-    Otherwise, allows the tool call to proceed by returning None.
-    """
-    tool_name = tool.name
-    agent_name = tool_context.agent_name # Agent attempting the tool call
-    rprint(f"[red]--- Callback: block_paris_tool_guardrail running for tool '{tool_name}' in agent '{agent_name}' ---")
-    rprint(f"[red]--- Callback: Inspecting args: {args} ---")
-
-    # --- Guardrail Logic ---
-    target_tool_name = "get_weather_stateful" # Match the function name used by FunctionTool
-    blocked_city = "paris"
-
-    # Check if it's the correct tool and the city argument matches the blocked city
-    if tool_name == target_tool_name:
-        city_argument = args.get("city", "") # Safely get the 'city' argument
-        if city_argument and city_argument.lower() == blocked_city:
-            rprint(f"[red]--- Callback: Detected blocked city '{city_argument}'. Blocking tool execution! ---")
-            # Optionally update state
-            tool_context.state["guardrail_tool_block_triggered"] = True
-            rprint("--- Callb[red]ack: Set state 'guardrail_tool_block_triggered': True ---")
-
-            # Return a dictionary matching the tool's expected output format for errors
-            # This dictionary becomes the tool's result, skipping the actual tool run.
-            return {
-                "status": "error",
-                "error_message": f"Policy restriction: Weather checks for '{city_argument.capitalize()}' are currently disabled by a tool guardrail."
-            }
-        else:
-             rprint(f"[red]--- Callback: City '{city_argument}' is allowed for tool '{tool_name}'. ---")
-    else:
-        rprint(f"[red]--- Callback: Tool '{tool_name}' is not the target tool. Allowing. ---")
-
-
-    # If the checks above didn't return a dictionary, allow the tool to execute
-    rprint(f"[red]--- Callback: Allowing tool '{tool_name}' to proceed. ---")
-    return None # Returning None allows the actual tool function to run
 
 
 async def run_conversation():
@@ -275,7 +276,11 @@ async def run_conversation():
     stored_session.state["user_preferred_temperature_unit"] = "Yolo"
 
     await call_agent_async(
-        "How about Paris? block", runner=runner, user_id=USER_ID, session_id=SESSION_ID
+        "How about Paris?", runner=runner, user_id=USER_ID, session_id=SESSION_ID
+    )  # Expecting the tool's error message
+
+    await call_agent_async(
+        "How about Paris block?", runner=runner, user_id=USER_ID, session_id=SESSION_ID
     )  # Expecting the tool's error message
 
     await call_agent_async(
@@ -288,3 +293,11 @@ async def run_conversation():
 
 # Execute the conversation using await in an async context (like Colab/Jupyter)
 asyncio.run(run_conversation())
+
+# rprint("[green] This is supposed to be green")
+# rprint("[red] This is supposed to be red")
+# rprint("[blue] This is supposed to be blue")
+# rprint("[yellow] This is supposed to be yellow")
+# rprint("[cyan] This is supposed to be cyan")
+# rprint("[magenta] This is supposed to be magenta")
+# rprint("[grey] This is supposed to be grey")
