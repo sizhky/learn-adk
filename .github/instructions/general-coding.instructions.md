@@ -1,1 +1,1 @@
-/Users/yeshwanth/.github-global/instructions/general-coding.instructions.md
+/Users/yeshwanth/.github/instructions/general-coding.instructions.md
