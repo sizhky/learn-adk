@@ -5,6 +5,7 @@ from google.adk.agents import Agent
 from google.adk.models.lite_llm import LiteLlm  # For multi-model support
 from google.adk.sessions import InMemorySessionService
 from google.adk.runners import Runner
+from google.adk.tools.tool_context import ToolContext
 from google.genai import types  # For creating message Content/Parts
 
 from torch_snippets import line
@@ -18,7 +19,7 @@ os.environ["OLLAMA_API_BASE"] = OLLAMA_API_BASE
 
 
 # @title Define the get_weather Tool
-def get_weather(city: str) -> dict:
+def get_weather(city: str, tool_context: ToolContext) -> dict:
     """Retrieves the current weather report for a specified city.
 
     Args:
@@ -50,9 +51,19 @@ def get_weather(city: str) -> dict:
             "report": "Tokyo is experiencing light rain and a temperature of 18°C.",
         },
     }
+    preferred_unit = tool_context.state.get("user_preferred_temperature_unit", "Celsius") # Default to Celsius
 
     if city_normalized in mock_weather_db:
-        return mock_weather_db[city_normalized]
+        celcius = mock_weather_db[city_normalized]
+        if preferred_unit == "Fahrenheit":
+            # Convert Celsius to Fahrenheit
+            temp = celcius["report"].replace("°C", "°F")
+            temp = temp.replace("25", str(int(25 * 9 / 5 + 32)))
+            temp = temp.replace("15", str(int(15 * 9 / 5 + 32)))
+            temp = temp.replace("18", str(int(18 * 9 / 5 + 32)))
+        else:
+            temp = celcius["report"]
+        return temp
     else:
         return {
             "status": "error",
@@ -60,14 +71,19 @@ def get_weather(city: str) -> dict:
         }
 
 
-model = LiteLlm(
-    model="ollama_chat/qwen3:0.6b",
-)
+if 1:
+    model = LiteLlm(
+        # model="ollama_chat/qwen3:0.6b",
+        model="ollama_chat/qwen3",
+    )
+else:
+    model = "gemini-2.0-flash"
+
 weather_agent = Agent(
     name="weather_agent_v1",
     model=model,
     description="Provides weather information for specific cities.",
-    instruction="You are a rude and sarcastic weather assistant",
+    instruction="You are an extremely rude and sarcastic weather assistant /no_think",
     tools=[get_weather],  # Pass the function directly
 )
 
@@ -87,7 +103,10 @@ SESSION_ID = "session_001"  # Using a fixed ID for simplicity
 # Create the specific session where the conversation will happen
 async def setup_session():
     session = await session_service.create_session(
-        app_name=APP_NAME, user_id=USER_ID, session_id=SESSION_ID
+        app_name=APP_NAME,
+        user_id=USER_ID,
+        session_id=SESSION_ID,
+        state={"user_preferred_temperature_unit": "Fahrenheit"},  # Example state
     )
     print(
         f"Session created: App='{APP_NAME}', User='{USER_ID}', Session='{SESSION_ID}'"
@@ -139,7 +158,9 @@ async def call_agent_async(query: str, runner: Runner, user_id, session_id):
             break  # Stop processing events once the final response is found
         else:
             # Intermediate responses can be printed or logged if needed
-            print(f"  [Intermediate] {event.content.parts[0].text if event.content else 'No content'}")
+            print(
+                f"  [Intermediate] {event.content.parts[0].text if event.content else 'No content'}"
+            )
 
     print(f"<<< Agent Response: {final_response_text}")
     line()
@@ -152,6 +173,9 @@ async def run_conversation():
         user_id=USER_ID,
         session_id=SESSION_ID,
     )
+
+    stored_session = runner.session_service.sessions[APP_NAME][USER_ID][SESSION_ID]
+    stored_session.state["user_preferred_temperature_unit"] = "Yolo"
 
     await call_agent_async(
         "How about Paris?", runner=runner, user_id=USER_ID, session_id=SESSION_ID
