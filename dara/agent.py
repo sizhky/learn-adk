@@ -170,7 +170,7 @@ if __name__ == "__main__":
     async def run_research_demo():
         """Demonstrates the research agent with sample company queries."""
         await call_agent_async(
-            "please research divami's revenue and industry type.",
+            "please research jio's revenue and industry type. in the form of a json object with keys: company_name, revenue_millions, industry_type, justification.",
             runner=runner,
             user_id=USER_ID,
             session_id=SESSION_ID,
