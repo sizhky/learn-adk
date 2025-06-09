@@ -4,7 +4,7 @@ Simple test of the agent system.
 """
 
 import asyncio
-from agent import agent_with_search_capability, research_agent, FINANCIAL_SOURCES
+from agent import call_research_agent, research_agent, FINANCIAL_SOURCES
 from google.adk.sessions import InMemorySessionService
 from google.adk.runners import Runner
 
@@ -34,7 +34,7 @@ async def test_simple():
     print(f"Runner created for agent '{runner.agent.name}'.")
     
     query = "please research Apple revenue"
-    result = await agent_with_search_capability(query, runner, USER_ID, SESSION_ID)
+    result = await call_research_agent(query, runner, USER_ID, SESSION_ID)
     
     print(f"\nQuery: {query}")
     print(f"Result: {result}")

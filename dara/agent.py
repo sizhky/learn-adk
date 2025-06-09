@@ -4,7 +4,6 @@
 
 import os
 import asyncio
-from typing import Any, Dict
 
 # Google ADK imports
 from google.adk.agents import Agent
@@ -14,9 +13,8 @@ from google.adk.runners import Runner
 from google.genai import types
 from rich import print as rprint
 
-# MCP client imports
-from mcp.client.session import ClientSession
-from mcp.client.stdio import StdioServerParameters, stdio_client
+# MCP Toolset imports
+from google.adk.tools.mcp_tool.mcp_toolset import MCPToolset, StdioServerParameters
 
 import warnings
 warnings.filterwarnings("ignore")
@@ -42,79 +40,17 @@ FINANCIAL_SOURCES = [
 ]
 
 
-# Custom DuckDuckGo Search Tool using MCP Client
-class DuckDuckGoSearchTool:
-    """Custom search tool that uses DuckDuckGo MCP server via client connection."""
-    
-    def __init__(self):
-        self.server_params = StdioServerParameters(
-            command="/Users/yeshwanth/.local/bin/uv",
-            args=["run", "mcp-duckduckgo"],
-            env=None
-        )
-    
-    async def search(self, query: str, count: int = 10) -> Dict[str, Any]:
-        """
-        Perform DuckDuckGo search using MCP client.
-        
-        Args:
-            query: Search query string
-            count: Number of results to return (1-20)
-            
-        Returns:
-            Dictionary containing search results
-        """
-        try:
-            async with stdio_client(self.server_params) as (read, write):
-                async with ClientSession(read, write) as session:
-                    # Initialize the connection
-                    await session.initialize()
-                    
-                    # Call the DuckDuckGo search tool
-                    result = await session.call_tool("duckduckgo_web_search", {
-                        "query": query,
-                        "count": count
-                    })
-                    
-                    return {
-                        "success": True,
-                        "query": query,
-                        "results": result.content[0].text if result.content else "No results found"
-                    }
-                    
-        except Exception as e:
-            return {
-                "success": False,
-                "error": str(e),
-                "query": query,
-                "results": "Search failed"
-            }
-
-# Create global search tool instance
-search_tool = DuckDuckGoSearchTool()
-
-# Custom search function for the agent
-async def search_financial_data(company_name: str, search_query: str = None, count: int = 10) -> str:
-    """
-    Search for financial data using DuckDuckGo MCP client.
-    Formats results specifically for financial research.
-    """
-    # Use provided search query or create enhanced query
-    if search_query is None:
-        enhanced_query = f"{company_name} revenue financial report annual SEC filing"
-    else:
-        enhanced_query = search_query
-    
-    result = await search_tool.search(enhanced_query, count)
-    
-    if result["success"]:
-        return f"Search Results for '{company_name}':\n{result['results']}"
-    else:
-        return f"Search failed for '{company_name}': {result['error']}"
-
+# Create MCPToolset for DuckDuckGo search
+duckduckgo_toolset = MCPToolset(
+    connection_params=StdioServerParameters(
+        command="uvx",
+        args=["duckduckgo-mcp-server"],
+        env=None
+    ),
+)
 
 # Configure the model
-if 1:
+if 0:
     model = LiteLlm(
         model="ollama_chat/granite3.3",
     )
@@ -133,7 +69,7 @@ research_agent = Agent(
 3. Type of Industry/Business Sector
 
 Research Process:
-- Use the available search function to find financial information from reputable sources
+- Use the duckduckgo_web_search tool to find financial information from reputable sources
 - Prioritize SEC filings, Yahoo Finance, MarketWatch, and company investor relations pages
 - Focus on recent annual reports (10-K filings for US companies)
 - Cross-reference data from multiple sources for accuracy
@@ -145,59 +81,24 @@ When researching, focus on:
 - Established financial news sources
 - Investor relations materials
 
+Search Strategy:
+- Use specific search queries like "[company name] revenue financial report annual SEC filing"
+- Search for "[company name] 10-K annual report" for US public companies
+- Try "[company name] financial statements revenue" for general searches
+- Cross-validate information from multiple sources
+
 Always cite your sources and indicate confidence level in the data found.
 
-You have access to a search function that can help you find financial information. Use it to search for company data.""",
-    tools=[],  # We'll handle search functionality through custom implementation
+You have access to a DuckDuckGo search tool. Use it effectively to search for company financial data.""",
+    tools=[duckduckgo_toolset],  # Use MCPToolset for search functionality
 )
 
-# Add search capability by creating a wrapper
-async def agent_with_search_capability(query: str, runner, user_id: str, session_id: str):
-    """Enhanced agent interaction with search capability."""
+# Simple agent interaction function
+async def call_research_agent(query: str, runner, user_id: str, session_id: str):
+    """Direct agent interaction using MCPToolset for search."""
     
-    # Pre-process to identify if this is a research query
-    if any(keyword in query.lower() for keyword in ['revenue', 'financial', 'company', 'industry', 'research']):
-        # Better company name extraction
-        import re
-        
-        # Try to extract company name more intelligently
-        # Look for patterns like "research [company]'s revenue" or "find [company] financial"
-        patterns = [
-            r"research\s+(\w+(?:\s+\w+)?)'?s?\s+revenue",  # "research divami's revenue"
-            r"research\s+(\w+(?:\s+\w+)?)\s+revenue",      # "research divami revenue"
-            r"find\s+(\w+(?:\s+\w+)?)\s+(?:revenue|financial)",  # "find apple revenue"
-            r"(\w+(?:\s+\w+)?)\s+revenue",                 # "apple revenue"
-            r"(\w+(?:\s+\w+)?)\s+financial",               # "apple financial"
-        ]
-        
-        company_name = ""
-        for pattern in patterns:
-            match = re.search(pattern, query.lower())
-            if match:
-                company_name = match.group(1).strip()
-                break
-        
-        # If no pattern matches, try to extract from context
-        if not company_name:
-            words = query.split()
-            # Skip common words and look for potential company names
-            skip_words = {'please', 'research', 'find', 'revenue', 'financial', 'company', 'industry', 'type', 'in', 'the', 'form', 'of', 'a', 'json', 'object', 'with', 'keys', 'and'}
-            potential_words = [word.strip("'s.:,") for word in words if word.lower() not in skip_words and len(word) > 2]
-            if potential_words:
-                company_name = potential_words[0]  # Take the first meaningful word
-        
-        if company_name:
-            # Perform search with cleaner query
-            search_query = f"{company_name} company revenue financial information annual report"
-            search_results = await search_financial_data(company_name, search_query)
-            enhanced_query = f"{query}\n\nSearch Results for {company_name}:\n{search_results}"
-        else:
-            enhanced_query = query
-    else:
-        enhanced_query = query
-    
-    # Send enhanced query to agent
-    content = types.Content(role="user", parts=[types.Part(text=enhanced_query)])
+    # Send query directly to agent - it now has access to search tools
+    content = types.Content(role="user", parts=[types.Part(text=query)])
     
     final_response_text = "Agent did not produce a final response."
     
@@ -283,11 +184,11 @@ if __name__ == "__main__":
     print(f"Runner created for agent '{runner.agent.name}'.")
     
     async def call_agent_async(query: str, runner: Runner, user_id: str, session_id: str):
-        """Sends a query to the agent using the enhanced search capability."""
+        """Sends a query to the agent using MCPToolset search capability."""
         rprint(f"[blue]\n>>> User Query: {query}")
         
-        # Use the enhanced agent function with search capability
-        final_response_text = await agent_with_search_capability(query, runner, user_id, session_id)
+        # Use the research agent with MCPToolset
+        final_response_text = await call_research_agent(query, runner, user_id, session_id)
         
         rprint(f"[green]>>>\nAgent Response: {final_response_text}")
         print("-" * 80)
