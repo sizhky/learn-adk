@@ -158,8 +158,12 @@ def crawl_website(
             '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx',
             '.mp4', '.m4v', '.mov', '.avi', '.wmv', '.flv', '.webm', '.mkv',
             '.mp3', '.wav', '.aac', '.ogg', '.flac', '.m4a', '.wma', '.opus',
-            '.zip', '.tar', '.gz', '.rar', '.7z',
-            'category', 'cart', 'checkout', 'enroll', 'author', 'page'
+            '.zip', '.tar', '.gz', '.rar', '.7z', '.json', '.xml', '.csv',
+            '.txt', '.md', '.js', '.css', '.php', '.asp', '.aspx',
+            'category', 'cart', 'checkout', 'enroll', 'author', 'page',
+            'news', 'blog', 'article', 'post', 'comment', 'forum', 'discussion',
+            'search', 'query', 'result', 'results', 'tag', 'tags', 'archive',
+            'helpful-resources', 
         ],
         "--exclude", "-e", help="Patterns to exclude from crawling"
     )
