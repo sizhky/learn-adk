@@ -12,7 +12,8 @@ from google.adk.models.lite_llm import LiteLlm
 TARGET_FOLDER_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "/Users/yeshwanth/Downloads")
 if 1:
     model = LiteLlm(
-        model="ollama_chat/gemma3",
+        model="ollama_chat/qwen3",
+        # model="ollama_chat/hf.co/unsloth/Qwen3-8B-128K-GGUF:Q4_K_M3",
     )
 else:
     model = "gemini-2.0-flash"  # Use experimental version that supports tools
@@ -27,7 +28,7 @@ files_toolset = MCPToolset(
                 ],
             ),
             # Optional: Filter which tools from the MCP server are exposed
-            # tool_filter=['list_directory', 'read_file']
+            tool_filter=['list_directory', 'read_file']
         )
 
 root_agent = LlmAgent(
@@ -38,65 +39,65 @@ root_agent = LlmAgent(
 )
 
 
-if __name__ == "__main__":
-    session_service = InMemorySessionService()
+# if __name__ == "__main__":
+#     session_service = InMemorySessionService()
     
-    # Application constants
-    APP_NAME = "company_research_app"
-    USER_ID = "researcher_1"
-    SESSION_ID = "research_001"
+#     # Application constants
+#     APP_NAME = "company_research_app"
+#     USER_ID = "researcher_1"
+#     SESSION_ID = "research_001"
     
-    async def setup_session():
-        session = await session_service.create_session(
-            app_name=APP_NAME,
-            user_id=USER_ID,
-            session_id=SESSION_ID,
-        )
-        print(f"Session created: App='{APP_NAME}', User='{USER_ID}', Session='{SESSION_ID}'")
-        return session
+#     async def setup_session():
+#         session = await session_service.create_session(
+#             app_name=APP_NAME,
+#             user_id=USER_ID,
+#             session_id=SESSION_ID,
+#         )
+#         print(f"Session created: App='{APP_NAME}', User='{USER_ID}', Session='{SESSION_ID}'")
+#         return session
     
-    session = asyncio.run(setup_session())
+#     session = asyncio.run(setup_session())
     
-    # Create runner
-    runner = Runner(
-        agent=root_agent,
-        app_name=APP_NAME,
-        session_service=session_service,
-    )
-    print(f"Runner created for agent '{runner.agent.name}'.")
+#     # Create runner
+#     runner = Runner(
+#         agent=root_agent,
+#         app_name=APP_NAME,
+#         session_service=session_service,
+#     )
+#     print(f"Runner created for agent '{runner.agent.name}'.")
     
-    async def call_agent_async(query: str, runner: Runner, user_id: str, session_id: str):
-        """Sends a query to the agent and prints the final response."""
-        rprint(f"[blue]\n>>> User Query: {query}")
-        content = types.Content(role="user", parts=[types.Part(text=query)])
+#     async def call_agent_async(query: str, runner: Runner, user_id: str, session_id: str):
+#         """Sends a query to the agent and prints the final response."""
+#         rprint(f"[blue]\n>>> User Query: {query}")
+#         content = types.Content(role="user", parts=[types.Part(text=query)])
         
-        final_response_text = "Agent did not produce a final response."
+#         final_response_text = "Agent did not produce a final response."
         
-        async for event in runner.run_async(
-            user_id=user_id, session_id=session_id, new_message=content
-        ):
-            if event.is_final_response():
-                if event.content and event.content.parts:
-                    final_response_text = event.content.parts[0].text
-                elif event.actions and event.actions.escalate:
-                    final_response_text = f"Agent escalated: {event.error_message or 'No specific message.'}"
-                break
-            else:
-                # Show intermediate responses
-                if event.content and event.content.parts:
-                    rprint(f"[yellow]--- Intermediate: {event.content.parts[0].text[:200]}...")
+#         async for event in runner.run_async(
+#             user_id=user_id, session_id=session_id, new_message=content
+#         ):
+#             if event.is_final_response():
+#                 if event.content and event.content.parts:
+#                     final_response_text = event.content.parts[0].text
+#                 elif event.actions and event.actions.escalate:
+#                     final_response_text = f"Agent escalated: {event.error_message or 'No specific message.'}"
+#                 break
+#             else:
+#                 # Show intermediate responses
+#                 if event.content and event.content.parts:
+#                     rprint(f"[yellow]--- Intermediate: {event.content.parts[0].text[:200]}...")
         
-        rprint(f"[green]>>>\nAgent Response: {final_response_text}")
-        print("-" * 80)
+#         rprint(f"[green]>>>\nAgent Response: {final_response_text}")
+#         print("-" * 80)
     
-    async def run_research_demo():
-        """Demonstrates the research agent with sample company queries."""
-        await call_agent_async(
-            "please list my files in downloads folder",
-            runner=runner,
-            user_id=USER_ID,
-            session_id=SESSION_ID,
-        )
+#     async def run_research_demo():
+#         """Demonstrates the research agent with sample company queries."""
+#         await call_agent_async(
+#             "please list my files in downloads folder",
+#             runner=runner,
+#             user_id=USER_ID,
+#             session_id=SESSION_ID,
+#         )
     
-    print("Starting the company research agent demonstration...")
-    asyncio.run(run_research_demo())
+#     print("Starting the company research agent demonstration...")
+#     asyncio.run(run_research_demo())
