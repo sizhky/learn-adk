@@ -71,10 +71,10 @@ def get_weather(city: str, tool_context: ToolContext) -> dict:
         }
 
 
-if 1:
+if 0:
     model = LiteLlm(
         # model="ollama_chat/qwen3:0.6b",
-        model="ollama_chat/qwen3",
+        model="ollama_chat/granite3.3",
     )
 else:
     model = "gemini-2.0-flash"
