@@ -77,7 +77,13 @@ class WebCrawler:
     # --- Link Extraction ---
     async def extract_links(self, markdown: str, base_url: str) -> Set[str]:
         links = set()
+        # Extract Markdown links
         for match in re.findall(r'\[.*?\]\((.*?)\)', markdown):
+            href = urljoin(base_url, match)
+            if self.domain in urlparse(href).netloc:
+                links.add(href.split('#')[0])
+        # Extract plain https:// links
+        for match in re.findall(r'https://[^\s\)\]]+', markdown):
             href = urljoin(base_url, match)
             if self.domain in urlparse(href).netloc:
                 links.add(href.split('#')[0])
@@ -86,9 +92,12 @@ class WebCrawler:
     # --- Crawler Logic ---
     async def crawl_and_scrape(self, url: str, crawler, session) -> List[str]:
         try:
-            if url in self.visited or self.domain not in urlparse(url).netloc:
+            if self.domain not in urlparse(url).netloc:
+                return []
+            if url in self.visited:
                 return []
             self.visited.add(url)
+            self.save_visited()
             print(f"[CRAWLING] {url}")
             result = await crawler.arun(url=url)
             if not result.success:
@@ -96,11 +105,15 @@ class WebCrawler:
                 return []
             self.write_to_file(url, result.markdown)
             links = await self.extract_links(result.markdown, url)
-            self.save_visited()
+            # Filter out excluded URLs before returning them for the queue
+            filtered_links = []
+            for link in links:
+                if not any(ext in link for ext in self.exclude_patterns):
+                    filtered_links.append(link)
             self.crawled += 1
             if self.crawled > self.crawl_limit:
                 raise Exception("Crawled too many pages, stopping to avoid infinite loop.")
-            return list(links)
+            return filtered_links
         except Exception as e:
             print(f"[SCRAPE EXCEPTION] {url} => {str(e)}")
             return []
@@ -116,6 +129,9 @@ class WebCrawler:
                 while to_crawl:
                     next_batch = []
                     for url in to_crawl:
+                        if url in self.visited:
+                            continue
+                        # Check exclusion patterns for URLs already in queue (for backward compatibility)
                         if any(ext in url for ext in self.exclude_patterns):
                             print(f"[EXCLUDED] {url} due to file type or path.")
                             continue
@@ -125,6 +141,7 @@ class WebCrawler:
                         new_links = await self.crawl_and_scrape(url, crawler, session)
                         next_batch.extend(new_links)
                     to_crawl = [link for link in next_batch if link not in self.visited]
+                    to_crawl = list(set(to_crawl))  # Deduplicate to avoid redundant scraping
                     self.save_queue(to_crawl)
             except Exception as e:
                 print(f"[EXCEPTION] {str(e)}")
@@ -136,8 +153,14 @@ def crawl_website(
     output_dir: str = typer.Argument(..., help="Output directory to save crawled content"),
     crawl_limit: int = typer.Option(50000, "--limit", "-l", help="Maximum number of pages to crawl"),
     exclude: List[str] = typer.Option(
-        ['.jpg', '.jpeg', '.png', '.gif', '.pdf', '.mp4', '.mp3', '.zip', '.tar', '.gz', 
-         'category', 'cart', 'checkout', 'enroll', 'author', 'page'],
+        [
+            '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.tiff', '.ico', '.svg',
+            '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx',
+            '.mp4', '.m4v', '.mov', '.avi', '.wmv', '.flv', '.webm', '.mkv',
+            '.mp3', '.wav', '.aac', '.ogg', '.flac', '.m4a', '.wma', '.opus',
+            '.zip', '.tar', '.gz', '.rar', '.7z',
+            'category', 'cart', 'checkout', 'enroll', 'author', 'page'
+        ],
         "--exclude", "-e", help="Patterns to exclude from crawling"
     )
 ):
